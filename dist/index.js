@@ -45040,7 +45040,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.fetchNotionPages = fetchNotionPages;
 const core = __importStar(__nccwpck_require__(7484));
 function extractNotionPageIds(text) {
-    const regex = /notion\.so\/(?:[a-zA-Z0-9-]+\/)?([a-f0-9]{32})/g;
+    const regex = /notion\.so\/(?:[^/\s]+[-])([a-f0-9]{32})/g;
     const matches = [];
     let match;
     while ((match = regex.exec(text)) !== null) {

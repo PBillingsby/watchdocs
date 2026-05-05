@@ -33,7 +33,7 @@ interface NotionBlocksResponse {
 }
 
 function extractNotionPageIds(text: string): string[] {
-  const regex: RegExp = /notion\.so\/(?:[a-zA-Z0-9-]+\/)?([a-f0-9]{32})/g
+  const regex: RegExp = /notion\.so\/(?:[^/\s]+[-])([a-f0-9]{32})/g
   const matches: string[] = []
   let match: RegExpExecArray | null
 
@@ -114,9 +114,7 @@ export async function fetchNotionPages(
     core.info('No Notion page links found in PR description')
     return ''
   }
-
-  core.info(`Found Notion pages: ${pageIds.join(', ')}`)
-
+  core.info(`Found Notion pages: ${pageIds.join(', ')}`);
   const pages: NotionPage[] = []
 
   for (const id of pageIds) {

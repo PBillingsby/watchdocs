@@ -33,7 +33,7 @@ interface NotionBlocksResponse {
 }
 
 function extractNotionPageIds(text: string): string[] {
-  const regex: RegExp = /notion\.so\/(?:[^/\s]+[-])([a-f0-9]{32})/g
+  const regex: RegExp = /notion\.so\/[^\s]*([a-f0-9]{32})/g
   const matches: string[] = []
   let match: RegExpExecArray | null
 

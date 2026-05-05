@@ -44933,11 +44933,8 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.fetchJiraTickets = fetchJiraTickets;
 const core = __importStar(__nccwpck_require__(7484));
-function extractJiraTicketIds(text, jiraUrl) {
-    const parsed = new URL(jiraUrl);
-    const hostname = parsed.hostname;
-    const projectKey = hostname.split('.')[0].toUpperCase();
-    const regex = new RegExp(`${projectKey}-\\d+`, 'g');
+function extractJiraTicketIds(text) {
+    const regex = /\b([A-Z][A-Z0-9]+-\d+)\b/g;
     const matches = text.match(regex);
     const unique = [...new Set(matches ?? [])];
     return unique;
@@ -44970,7 +44967,7 @@ async function fetchTicket(ticketId, jiraUrl, email, token) {
     return ticket;
 }
 async function fetchJiraTickets(prDescription, jiraUrl, email, token) {
-    const ticketIds = extractJiraTicketIds(prDescription, jiraUrl);
+    const ticketIds = extractJiraTicketIds(prDescription);
     if (ticketIds.length === 0) {
         core.info('No Jira ticket IDs found in PR description');
         return '';

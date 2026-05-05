@@ -20,11 +20,8 @@ interface JiraIssueResponse {
   }
 }
 
-function extractJiraTicketIds(text: string, jiraUrl: string): string[] {
-  const parsed: URL = new URL(jiraUrl)
-  const hostname: string = parsed.hostname
-  const projectKey: string = hostname.split('.')[0].toUpperCase()
-  const regex: RegExp = new RegExp(`${projectKey}-\\d+`, 'g')
+function extractJiraTicketIds(text: string): string[] {
+  const regex: RegExp = /\b([A-Z][A-Z0-9]+-\d+)\b/g
   const matches: string[] | null = text.match(regex)
   const unique: string[] = [...new Set(matches ?? [])]
   return unique
@@ -75,7 +72,7 @@ export async function fetchJiraTickets(
   email: string,
   token: string
 ): Promise<string> {
-  const ticketIds: string[] = extractJiraTicketIds(prDescription, jiraUrl)
+  const ticketIds: string[] = extractJiraTicketIds(prDescription)
 
   if (ticketIds.length === 0) {
     core.info('No Jira ticket IDs found in PR description')

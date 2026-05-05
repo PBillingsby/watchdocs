@@ -88,10 +88,20 @@ export async function fetchJiraTickets(
 
   for (const id of ticketIds) {
     const ticket: JiraTicket | null = await fetchTicket(id, jiraUrl, email, token)
-    if (ticket !== null) tickets.push(ticket)
+    if (ticket === null) continue
+
+    if (ticket.status.toLowerCase() !== 'done') {
+      core.info(`Skipping ticket ${ticket.id} — status is "${ticket.status}", not Done`)
+      continue
+    }
+
+    tickets.push(ticket)
   }
 
-  if (tickets.length === 0) return ''
+  if (tickets.length === 0) {
+    core.info('No Done tickets found, skipping Jira context')
+    return ''
+  }
 
   const formatted: string = tickets
     .map((t: JiraTicket) => `Ticket ${t.id} (${t.status})\nSummary: ${t.summary}\nDescription: ${t.description}`)

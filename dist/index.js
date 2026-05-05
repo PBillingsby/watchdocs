@@ -44979,11 +44979,18 @@ async function fetchJiraTickets(prDescription, jiraUrl, email, token) {
     const tickets = [];
     for (const id of ticketIds) {
         const ticket = await fetchTicket(id, jiraUrl, email, token);
-        if (ticket !== null)
-            tickets.push(ticket);
+        if (ticket === null)
+            continue;
+        if (ticket.status.toLowerCase() !== 'done') {
+            core.info(`Skipping ticket ${ticket.id} — status is "${ticket.status}", not Done`);
+            continue;
+        }
+        tickets.push(ticket);
     }
-    if (tickets.length === 0)
+    if (tickets.length === 0) {
+        core.info('No Done tickets found, skipping Jira context');
         return '';
+    }
     const formatted = tickets
         .map((t) => `Ticket ${t.id} (${t.status})\nSummary: ${t.summary}\nDescription: ${t.description}`)
         .join('\n\n');

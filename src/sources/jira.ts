@@ -104,7 +104,5 @@ export async function fetchJiraTickets(
     .map((t: JiraTicket) => `Ticket ${t.id} (${t.status})\nSummary: ${t.summary}\nDescription: ${t.description}`)
     .join('\n\n')
 
-  core.info(`Jira context being passed to Claude:\n${formatted}`)
-
   return formatted
 }

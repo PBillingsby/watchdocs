@@ -79,7 +79,6 @@ async function fetchPageContent(
   })
 
   if (!response.ok) {
-    core.warning(`Failed to fetch Notion page content ${pageId}: ${response.status}`)
     return ''
   }
 

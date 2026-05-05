@@ -1,0 +1,26 @@
+name: WatchDocs
+description: Automatically detects missing or outdated documentation based on PR changes, changelogs, and linked tickets.
+
+inputs:
+  anthropic_api_key:
+    description: Anthropic API key
+    required: true
+  github_token:
+    description: GitHub token for posting PR comments
+    required: true
+  jira_url:
+    description: Jira instance URL (optional)
+    required: false
+  jira_token:
+    description: Jira API token (optional)
+    required: false
+  jira_email:
+    description: Jira account email (optional)
+    required: false
+  notion_token:
+    description: Notion integration token (optional)
+    required: false
+
+runs:
+  using: node20
+  main: dist/index.js

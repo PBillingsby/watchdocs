@@ -102,7 +102,8 @@ async function run() {
 
     // post PR comment
     core.info('Posting PR comment...')
-    await postPRComment(octokit, owner, repo, prNumber, analysis)
+    const sha: string = context.payload.pull_request.head.sha
+    await postPRComment(octokit, owner, repo, prNumber, sha, analysis)
 
     core.info('WatchDocs complete')
   } catch (error) {

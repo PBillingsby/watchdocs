@@ -1,0 +1,16 @@
+name: WatchDocs
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  watchdocs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: PBillingsby/watchdocs@main
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}

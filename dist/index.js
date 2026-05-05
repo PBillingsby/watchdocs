@@ -44576,25 +44576,34 @@ Respond ONLY with a JSON object in this exact format, no preamble:
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.postPRComment = postPRComment;
-function buildCommentBody(analysis) {
+function buildCommentBody(analysis, owner, repo, sha) {
     const lines = [];
     lines.push('## 👀 WatchDocs');
     lines.push('');
-    lines.push(analysis.summary);
+    lines.push(`**${analysis.summary}**`);
     lines.push('');
-    lines.push('The following documentation files may need updating:');
-    lines.push('');
+    const grouped = {};
     for (const issue of analysis.issues) {
-        lines.push(`**\`${issue.file}\`**`);
-        lines.push(`${issue.reason}`);
+        if (!grouped[issue.file]) {
+            grouped[issue.file] = [];
+        }
+        grouped[issue.file].push(issue);
+    }
+    for (const [file, issues] of Object.entries(grouped)) {
+        const fileUrl = `https://github.com/${owner}/${repo}/blob/${sha}/${file}`;
+        lines.push(`### 📄 [\`${file}\`](${fileUrl})`);
+        lines.push('');
+        for (const issue of issues) {
+            lines.push(`- ⚠️ ${issue.reason}`);
+        }
         lines.push('');
     }
     lines.push('---');
-    lines.push('*Powered by [WatchDocs](https://github.com/pbillingsby/watchdocs-action)*');
+    lines.push('*Powered by [WatchDocs](https://github.com/PBillingsby/watchdocs)*');
     return lines.join('\n');
 }
-async function postPRComment(octokit, owner, repo, prNumber, analysis) {
-    const body = buildCommentBody(analysis);
+async function postPRComment(octokit, owner, repo, prNumber, sha, analysis) {
+    const body = buildCommentBody(analysis, owner, repo, sha);
     await octokit.rest.issues.createComment({
         owner,
         repo,
@@ -44802,7 +44811,8 @@ async function run() {
         }
         // post PR comment
         core.info('Posting PR comment...');
-        await (0, comment_1.postPRComment)(octokit, owner, repo, prNumber, analysis);
+        const sha = context.payload.pull_request.head.sha;
+        await (0, comment_1.postPRComment)(octokit, owner, repo, prNumber, sha, analysis);
         core.info('WatchDocs complete');
     }
     catch (error) {

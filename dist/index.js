@@ -44994,6 +44994,7 @@ async function fetchJiraTickets(prDescription, jiraUrl, email, token) {
     const formatted = tickets
         .map((t) => `Ticket ${t.id} (${t.status})\nSummary: ${t.summary}\nDescription: ${t.description}`)
         .join('\n\n');
+    core.info(`Jira context being passed to Claude:\n${formatted}`);
     return formatted;
 }
 

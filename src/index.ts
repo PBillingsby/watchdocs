@@ -108,8 +108,8 @@ async function run() {
 
     core.info(`Found ${docFiles.length} documentation files`)
 
-    core.info(`Doc files being sent to Claude:\n${docFiles.map(f => `${f.path}: ${f.content.slice(0, 200)}`).join('\n')}`)
-
+    core.info(`Doc files being sent to Claude: ${docFiles.map(f => `${f.path} (${f.content.length} chars)`).join(', ')}`)
+    
     // run claude analysis
     core.info('Analyzing with Claude...')
     const analysis = await analyzeWithClaude({

@@ -117,8 +117,7 @@ export async function analyzeWithClaude(input: AnalysisInput): Promise<AnalysisR
   const docContext: string = truncateToTokenBudget(
     input.docFiles
       .map((f: DocFile) => `### ${f.path}\n${f.content}`)
-      .join('\n\n'),
-      MAX_DIFF_TOKENS
+      .join('\n\n')
   )
 
   const diffContext: string = truncateToTokenBudget(

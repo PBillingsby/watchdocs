@@ -44747,7 +44747,7 @@ async function run() {
         const owner = context.repo.owner;
         const repo = context.repo.repo;
         core.info('Fetching PR diff...');
-        const prDiff = await (0, github_1.fetchPRDiff)(octokit, owner, repo, prNumber);
+        const prDiff = await (0, github_1.fetchPRDiff)(octokit, owner, repo, prNumber, anthropicKey);
         // fetch changelog if enabled
         let changelog = '';
         if (config.sources.changelog) {
@@ -44856,13 +44856,85 @@ run();
 /***/ }),
 
 /***/ 15:
-/***/ ((__unused_webpack_module, exports) => {
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
 
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.fetchPRDiff = fetchPRDiff;
-async function fetchPRDiff(octokit, owner, repo, prNumber) {
+const core = __importStar(__nccwpck_require__(7484));
+const sdk_1 = __importDefault(__nccwpck_require__(121));
+async function scoreFileRelevance(files, anthropicKey) {
+    const client = new sdk_1.default({ apiKey: anthropicKey });
+    const filenames = files.map((f) => f.filename);
+    const prompt = `You are analyzing a pull request. Given this list of changed files, identify which ones are likely user-facing or developer-facing based on their names and paths.
+
+User-facing means: public APIs, SDK methods, request handlers, route definitions, exported functions, or anything a developer integrating with this product would interact with.
+
+Not user-facing means: tests, internal utilities, config files, build artifacts, lock files, CI/CD configs, or internal helpers.
+
+Files:
+${filenames.join('\n')}
+
+Respond ONLY with a JSON array of the filenames that are user-facing. No preamble, no explanation:
+["path/to/file.ts", "path/to/other.py"]`;
+    const response = await client.messages.create({
+        model: 'claude-haiku-4-5',
+        max_tokens: 1024,
+        messages: [
+            {
+                role: 'user',
+                content: prompt,
+            },
+        ],
+    });
+    const firstBlock = response.content[0];
+    if (firstBlock.type !== 'text') {
+        core.warning('File relevance scoring returned no text, using all files');
+        return filenames;
+    }
+    const raw = firstBlock.text.replace(/```json|```/g, '').trim();
+    const relevant = JSON.parse(raw);
+    core.info(`Relevant files identified: ${relevant.join(', ')}`);
+    return relevant;
+}
+async function fetchPRDiff(octokit, owner, repo, prNumber, anthropicKey) {
     const { data: pr } = await octokit.rest.pulls.get({
         owner,
         repo,
@@ -44873,10 +44945,15 @@ async function fetchPRDiff(octokit, owner, repo, prNumber) {
         repo,
         pull_number: prNumber,
     });
+    const nonDocFiles = files.filter((f) => !f.filename.startsWith('docs/'));
+    core.info(`Total changed files: ${nonDocFiles.length}`);
+    // step 1 -- score files by relevance using cheap haiku call
+    const relevantFilenames = await scoreFileRelevance(nonDocFiles, anthropicKey);
+    // step 2 -- only fetch full diff for relevant files
+    const relevantFiles = nonDocFiles.filter((f) => relevantFilenames.includes(f.filename));
+    core.info(`User-facing files after scoring: ${relevantFiles.length}`);
     const diffParts = [];
-    for (const file of files) {
-        if (file.filename.startsWith('docs/'))
-            continue;
+    for (const file of relevantFiles) {
         const patch = file.patch ?? '';
         const part = `File: ${file.filename}\nStatus: ${file.status}\n${patch}`;
         diffParts.push(part);

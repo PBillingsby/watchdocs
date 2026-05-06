@@ -27,7 +27,7 @@ async function run() {
     const repo = context.repo.repo
 
     core.info('Fetching PR diff...')
-    const prDiff = await fetchPRDiff(octokit, owner, repo, prNumber)
+    const prDiff = await fetchPRDiff(octokit, owner, repo, prNumber, anthropicKey)
 
     // fetch changelog if enabled
     let changelog = ''

@@ -44495,217 +44495,6 @@ function wrappy (fn, cb) {
 
 /***/ }),
 
-/***/ 8561:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
-
-"use strict";
-
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.analyzeWithClaude = analyzeWithClaude;
-exports.scoreDocRelevance = scoreDocRelevance;
-const sdk_1 = __importDefault(__nccwpck_require__(121));
-const core = __importStar(__nccwpck_require__(7484));
-const MAX_RETRIES = 5;
-const RETRY_DELAY_MS = 5000;
-const MAX_DIFF_TOKENS = 4000;
-function truncateToTokenBudget(text, maxChars) {
-    if (text.length <= maxChars)
-        return text;
-    core.warning(`Content truncated from ${text.length} to ${maxChars} chars to stay within context budget`);
-    return text.slice(0, maxChars) + '\n... [truncated]';
-}
-async function sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
-}
-async function callClaudeWithRetry(client, prompt, attempt = 1) {
-    try {
-        const response = await client.messages.create({
-            model: 'claude-sonnet-4-5',
-            max_tokens: 4096,
-            messages: [
-                {
-                    role: 'user',
-                    content: prompt,
-                },
-            ],
-        });
-        const firstBlock = response.content[0];
-        if (firstBlock.type !== 'text') {
-            throw new Error('Claude returned no text content');
-        }
-        return firstBlock.text;
-    }
-    catch (error) {
-        if (error instanceof sdk_1.default.APIError) {
-            core.warning(`Claude API error on attempt ${attempt}/${MAX_RETRIES}: status=${error.status} message=${error.message}`);
-            const isRetryable = error.status !== undefined &&
-                (error.status === 429 || error.status === 529 || error.status >= 500);
-            if (isRetryable && attempt < MAX_RETRIES) {
-                const delay = RETRY_DELAY_MS * attempt;
-                core.warning(`Retrying in ${delay}ms...`);
-                await sleep(delay);
-                return callClaudeWithRetry(client, prompt, attempt + 1);
-            }
-            core.error(`Claude API call failed after ${attempt} attempts: status=${error.status} message=${error.message}`);
-            throw error;
-        }
-        core.error(`Unexpected error calling Claude: ${error}`);
-        throw error;
-    }
-}
-function parseAnalysisResult(raw) {
-    const cleaned = raw.replace(/```json|```/g, '').trim();
-    try {
-        const parsed = JSON.parse(cleaned);
-        if (typeof parsed.hasIssues !== 'boolean') {
-            throw new Error('Missing hasIssues field');
-        }
-        if (!Array.isArray(parsed.issues)) {
-            throw new Error('Missing issues array');
-        }
-        if (typeof parsed.summary !== 'string') {
-            throw new Error('Missing summary field');
-        }
-        return parsed;
-    }
-    catch (error) {
-        core.warning(`Failed to parse Claude response as JSON: ${error}`);
-        core.warning(`Raw response: ${cleaned.slice(0, 500)}`);
-        return {
-            hasIssues: false,
-            issues: [],
-            summary: 'WatchDocs was unable to parse the analysis result. Please check the action logs.',
-        };
-    }
-}
-async function analyzeWithClaude(input) {
-    const client = new sdk_1.default({ apiKey: input.anthropicKey });
-    const docContext = input.docFiles
-        .map((f) => `### ${f.path}\n${f.content}`)
-        .join('\n\n');
-    const diffContext = truncateToTokenBudget(input.prDiff, MAX_DIFF_TOKENS);
-    const sourceContext = [
-        diffContext ? `## PR Diff\n${diffContext}` : '',
-        input.prDescription ? `## PR Description\n${input.prDescription}` : '',
-        input.changelog ? `## Changelog\n${input.changelog}` : '',
-        input.jiraContext ? `## Jira Tickets\n${input.jiraContext}` : '',
-        input.notionContext ? `## Notion Pages\n${input.notionContext}` : '',
-    ].filter(Boolean).join('\n\n');
-    const prompt = `You are WatchDocs, a documentation gap detector. Your job is to identify documentation that is missing or outdated based on code changes.
-
-## Current Documentation
-${docContext}
-
-## Changes Being Made
-${sourceContext}
-
-## Instructions
-Analyze the changes and identify any documentation gaps. A gap exists when:
-- A new endpoint, function, parameter, or feature is introduced but not documented
-- An existing behavior changes but the docs still describe the old behavior
-- A new error code or response is added but not listed in the docs
-- A changelog entry references something that does not appear in the docs
-
-Only flag user-facing or developer-facing changes. Ignore internal refactors, config changes, test updates, and infrastructure changes that do not affect the public API or developer experience.
-
-Be specific. Reference the exact file, the missing item, and why it needs updating.
-If there are no documentation gaps, say so clearly.
-
-Respond ONLY with a JSON object in this exact format, no preamble:
-{
-  "hasIssues": true,
-  "summary": "brief one sentence summary",
-  "issues": [
-    {
-      "file": "path to the doc file that needs updating",
-      "reason": "specific explanation of what is missing or outdated"
-    }
-  ]
-}`;
-    core.info('Sending analysis request to Claude...');
-    const raw = await callClaudeWithRetry(client, prompt);
-    const result = parseAnalysisResult(raw);
-    core.info(`Analysis complete. Has issues: ${result.hasIssues}, Issue count: ${result.issues.length}`);
-    return result;
-}
-async function scoreDocRelevance(anthropicKey, changedFiles, docFiles) {
-    const client = new sdk_1.default({ apiKey: anthropicKey });
-    const prompt = `You are analyzing a pull request. Given these changed code files and available documentation files, identify which documentation files are likely affected by the code changes.
-
-Changed code files:
-${changedFiles.join('\n')}
-
-Available documentation files:
-${docFiles.map(f => f.path).join('\n')}
-
-Respond ONLY with a JSON array of the documentation file paths that are likely affected. No preamble, no explanation:
-["path/to/doc.md"]`;
-    const response = await client.messages.create({
-        model: 'claude-haiku-4-5',
-        max_tokens: 512,
-        messages: [
-            {
-                role: 'user',
-                content: prompt,
-            },
-        ],
-    });
-    const firstBlock = response.content[0];
-    if (firstBlock.type !== 'text') {
-        core.warning('Doc relevance scoring returned no text, using all doc files');
-        return docFiles.map(f => f.path);
-    }
-    const raw = firstBlock.text.replace(/```json|```/g, '').trim();
-    try {
-        const relevant = JSON.parse(raw);
-        core.info(`Relevant doc files identified: ${relevant.join(', ')}`);
-        return relevant;
-    }
-    catch {
-        core.warning('Failed to parse doc relevance response, using all doc files');
-        return docFiles.map(f => f.path);
-    }
-}
-
-
-/***/ }),
-
 /***/ 2246:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
@@ -44887,198 +44676,7 @@ function loadConfig(configPath) {
 
 /***/ }),
 
-/***/ 9407:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
-
-"use strict";
-
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-const core = __importStar(__nccwpck_require__(7484));
-const github = __importStar(__nccwpck_require__(3228));
-const github_1 = __nccwpck_require__(15);
-const jira_1 = __nccwpck_require__(2692);
-const notion_1 = __nccwpck_require__(5881);
-const analyzer_1 = __nccwpck_require__(8561);
-const comment_1 = __nccwpck_require__(2246);
-const config_1 = __nccwpck_require__(2973);
-const fs = __importStar(__nccwpck_require__(9896));
-const path = __importStar(__nccwpck_require__(6928));
-async function run() {
-    try {
-        const config = (0, config_1.loadConfig)('watchdocs.config.yml');
-        const anthropicKey = core.getInput('anthropic_api_key', { required: true });
-        const githubToken = core.getInput('github_token', { required: true });
-        const octokit = github.getOctokit(githubToken);
-        const context = github.context;
-        if (!context.payload.pull_request) {
-            core.info('No pull request found, skipping WatchDocs');
-            return;
-        }
-        const prNumber = context.payload.pull_request.number;
-        const owner = context.repo.owner;
-        const repo = context.repo.repo;
-        core.info('Fetching PR diff...');
-        const prDiff = await (0, github_1.fetchPRDiff)(octokit, owner, repo, prNumber, anthropicKey);
-        // fetch changelog if enabled
-        let changelog = '';
-        if (config.sources.changelog) {
-            const changelogPath = path.join(process.cwd(), 'CHANGELOG.md');
-            if (fs.existsSync(changelogPath)) {
-                changelog = fs.readFileSync(changelogPath, 'utf-8').slice(0, 3000);
-                core.info('Changelog found and loaded');
-            }
-            else {
-                core.info('No CHANGELOG.md found, skipping');
-            }
-        }
-        // fetch jira tickets if enabled
-        let jiraContext = '';
-        if (config.sources.jira) {
-            core.info('Fetching Jira tickets...');
-            const jiraUrl = core.getInput('jira_url');
-            const jiraToken = core.getInput('jira_token');
-            const jiraEmail = core.getInput('jira_email');
-            if (jiraUrl && jiraToken && jiraEmail) {
-                jiraContext = await (0, jira_1.fetchJiraTickets)(prDiff.description, jiraUrl, jiraEmail, jiraToken);
-            }
-            else {
-                core.warning('Jira enabled in config but credentials not provided, skipping');
-            }
-        }
-        // fetch notion pages if enabled
-        let notionContext = '';
-        if (config.sources.notion) {
-            core.info('Fetching Notion pages...');
-            const notionToken = core.getInput('notion_token');
-            if (notionToken) {
-                notionContext = await (0, notion_1.fetchNotionPages)(notionToken, prDiff.description);
-            }
-            else {
-                core.warning('Notion enabled in config but token not provided, skipping');
-            }
-        }
-        // load doc files from configured paths
-        core.info('Loading documentation files...');
-        const allDocFiles = loadDocFiles(config.docs.paths);
-        if (allDocFiles.length === 0) {
-            core.warning('No documentation files found in configured paths, skipping');
-            return;
-        }
-        core.info(`Found ${allDocFiles.length} documentation files`);
-        // score doc files for relevance against changed files
-        const relevantDocPaths = await (0, analyzer_1.scoreDocRelevance)(anthropicKey, prDiff.diff.split('\n')
-            .filter((line) => line.startsWith('File:'))
-            .map((line) => line.replace('File: ', '').trim()), allDocFiles);
-        // only load full content for relevant doc files
-        const docFiles = allDocFiles.filter((f) => relevantDocPaths.some((p) => f.path.includes(p) || p.includes(f.path)));
-        core.info(`Relevant doc files after scoring: ${docFiles.length}`);
-        if (docFiles.length === 0) {
-            core.warning('No relevant doc files found for this PR, skipping');
-            return;
-        }
-        core.info(`Found ${docFiles.length} documentation files`);
-        core.info(`Doc files being sent to Claude: ${docFiles.map(f => `${f.path} (${f.content.length} chars)`).join(', ')}`);
-        // run claude analysis
-        core.info('Analyzing with Claude...');
-        const analysis = await (0, analyzer_1.analyzeWithClaude)({
-            anthropicKey,
-            prDiff: prDiff.diff,
-            prDescription: prDiff.description,
-            changelog,
-            jiraContext,
-            notionContext,
-            docFiles,
-        });
-        if (!analysis.hasIssues) {
-            core.info('WatchDocs: No documentation gaps found');
-            // clean up existing comment if docs are now up to date
-            const existingCommentId = await (0, comment_1.findExistingComment)(octokit, owner, repo, prNumber);
-            if (existingCommentId !== null) {
-                core.info('Docs are up to date, resolving existing WatchDocs comment');
-                await (0, comment_1.resolveExistingComment)(octokit, owner, repo, existingCommentId);
-            }
-            return;
-        }
-        // post PR comment
-        core.info('Posting PR comment...');
-        const sha = context.payload.pull_request.head.sha;
-        await (0, comment_1.postPRComment)(octokit, owner, repo, prNumber, sha, analysis);
-        core.info('WatchDocs complete');
-    }
-    catch (error) {
-        core.setFailed(`WatchDocs failed: ${error}`);
-    }
-}
-function loadDocFiles(paths) {
-    const docFiles = [];
-    for (const docPath of paths) {
-        const fullPath = path.join(process.cwd(), docPath);
-        if (!fs.existsSync(fullPath))
-            continue;
-        const files = getAllMarkdownFiles(fullPath);
-        for (const file of files) {
-            const content = fs.readFileSync(file, 'utf-8');
-            docFiles.push({
-                path: file.replace(process.cwd(), ''),
-                content,
-            });
-        }
-    }
-    return docFiles;
-}
-function getAllMarkdownFiles(dir) {
-    const results = [];
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-            results.push(...getAllMarkdownFiles(fullPath));
-        }
-        else if (entry.name.endsWith('.md') || entry.name.endsWith('.mdx')) {
-            results.push(fullPath);
-        }
-    }
-    return results;
-}
-run();
-
-
-/***/ }),
-
-/***/ 15:
+/***/ 2547:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
@@ -45120,26 +44718,25 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.fetchPRDiff = fetchPRDiff;
-const core = __importStar(__nccwpck_require__(7484));
+exports.generateDraft = generateDraft;
 const sdk_1 = __importDefault(__nccwpck_require__(121));
-async function scoreFileRelevance(files, anthropicKey) {
-    const client = new sdk_1.default({ apiKey: anthropicKey });
-    const filenames = files.map((f) => f.filename);
-    const prompt = `You are analyzing a pull request. Given this list of changed files, identify which ones are likely user-facing or developer-facing based on their names and paths.
+const core = __importStar(__nccwpck_require__(7484));
+async function generateDraft(input) {
+    const client = new sdk_1.default({ apiKey: input.anthropicKey });
+    const prompt = `You are a technical writer. You will be given an existing documentation file and a list of missing sections that need to be added.
 
-User-facing means: public APIs, SDK methods, request handlers, route definitions, exported functions, or anything a developer integrating with this product would interact with.
+Your job is to write ONLY the missing sections in the exact same tone, style, and format as the existing documentation. Do not rewrite existing content. Do not add preamble or explanation. Just write the new sections ready to be appended to the doc file.
 
-Not user-facing means: tests, internal utilities, config files, build artifacts, lock files, CI/CD configs, or internal helpers.
+## Existing Documentation
+${input.docFile.content}
 
-Files:
-${filenames.join('\n')}
+## Missing Sections to Write
+${input.gaps.join('\n')}
 
-Respond ONLY with a JSON array of the filenames that are user-facing. No preamble, no explanation:
-["path/to/file.ts", "path/to/other.py"]`;
+Write the new documentation sections now. Match the existing format exactly.`;
     const response = await client.messages.create({
-        model: 'claude-haiku-4-5',
-        max_tokens: 1024,
+        model: 'claude-sonnet-4-5',
+        max_tokens: 4096,
         messages: [
             {
                 role: 'user',
@@ -45149,155 +44746,193 @@ Respond ONLY with a JSON array of the filenames that are user-facing. No preambl
     });
     const firstBlock = response.content[0];
     if (firstBlock.type !== 'text') {
-        core.warning('File relevance scoring returned no text, using all files');
-        return filenames;
+        throw new Error('Claude returned no text content');
     }
-    const raw = firstBlock.text.replace(/```json|```/g, '').trim();
-    const relevant = JSON.parse(raw);
-    core.info(`Relevant files identified: ${relevant.join(', ')}`);
-    return relevant;
+    core.info(`Draft generated for ${input.docFile.path}`);
+    return {
+        filePath: input.docFile.path,
+        additions: firstBlock.text,
+    };
 }
-async function fetchPRDiff(octokit, owner, repo, prNumber, anthropicKey) {
+
+
+/***/ }),
+
+/***/ 9407:
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
+
+"use strict";
+
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+const core = __importStar(__nccwpck_require__(7484));
+const github = __importStar(__nccwpck_require__(3228));
+const comment_1 = __nccwpck_require__(2246);
+const drafter_1 = __nccwpck_require__(2547);
+const patcher_1 = __nccwpck_require__(1382);
+const config_1 = __nccwpck_require__(2973);
+const fs = __importStar(__nccwpck_require__(9896));
+const path = __importStar(__nccwpck_require__(6928));
+async function runAnalysisMode() {
+    try {
+        const mode = core.getInput('mode') || 'analyze';
+        if (mode === 'draft') {
+            await runDraftMode();
+        }
+        else {
+            await runAnalysisMode();
+        }
+    }
+    catch (error) {
+        core.setFailed(`WatchDocs failed: ${error}`);
+    }
+}
+async function runDraftMode() {
+    const anthropicKey = core.getInput('anthropic_api_key', { required: true });
+    const githubToken = core.getInput('github_token', { required: true });
+    const octokit = github.getOctokit(githubToken);
+    const context = github.context;
+    // get PR number from the issue comment event
+    const prNumber = context.payload.issue?.number;
+    if (!prNumber) {
+        core.info('No PR number found, skipping draft mode');
+        return;
+    }
+    const owner = context.repo.owner;
+    const repo = context.repo.repo;
+    core.info(`Running WatchDocs draft mode for PR #${prNumber}`);
+    // get the PR branch
     const { data: pr } = await octokit.rest.pulls.get({
         owner,
         repo,
         pull_number: prNumber,
     });
-    const { data: files } = await octokit.rest.pulls.listFiles({
+    const prBranch = pr.head.ref;
+    // find and parse the existing WatchDocs comment
+    const existingCommentId = await (0, comment_1.findExistingComment)(octokit, owner, repo, prNumber);
+    if (!existingCommentId) {
+        core.info('No WatchDocs comment found -- run analysis first');
+        return;
+    }
+    const { data: comment } = await octokit.rest.issues.getComment({
         owner,
         repo,
-        pull_number: prNumber,
+        comment_id: existingCommentId,
     });
-    const nonDocFiles = files.filter((f) => !f.filename.startsWith('docs/'));
-    core.info(`Total changed files: ${nonDocFiles.length}`);
-    // step 1 -- score files by relevance using cheap haiku call
-    const relevantFilenames = await scoreFileRelevance(nonDocFiles, anthropicKey);
-    // step 2 -- only fetch full diff for relevant files
-    const relevantFiles = nonDocFiles.filter((f) => relevantFilenames.includes(f.filename));
-    core.info(`User-facing files after scoring: ${relevantFiles.length}`);
-    const diffParts = [];
-    for (const file of relevantFiles) {
-        const patch = file.patch ?? '';
-        const part = `File: ${file.filename}\nStatus: ${file.status}\n${patch}`;
-        diffParts.push(part);
+    // extract gaps from the comment body
+    const gaps = extractGapsFromComment(comment.body ?? '');
+    if (gaps.length === 0) {
+        core.info('No gaps found in WatchDocs comment, skipping draft');
+        return;
     }
-    const diff = diffParts.join('\n\n').slice(0, 6000);
-    return {
-        diff,
-        description: pr.body ?? '',
-        title: pr.title,
-    };
-}
-
-
-/***/ }),
-
-/***/ 2692:
-/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
-
-"use strict";
-
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
+    core.info(`Found ${gaps.length} gaps to draft`);
+    // load doc files
+    const config = (0, config_1.loadConfig)('watchdocs.config.yml');
+    const allDocFiles = loadDocFiles(config.docs.paths);
+    // generate drafts for each doc file that has gaps
+    const drafts = [];
+    for (const docFile of allDocFiles) {
+        const fileGaps = gaps.filter(g => g.includes(docFile.path));
+        if (fileGaps.length === 0)
+            continue;
+        const draft = await (0, drafter_1.generateDraft)({
+            anthropicKey,
+            gaps: fileGaps,
+            docFile,
+        });
+        drafts.push(draft);
     }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || (function () {
-    var ownKeys = function(o) {
-        ownKeys = Object.getOwnPropertyNames || function (o) {
-            var ar = [];
-            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
-            return ar;
-        };
-        return ownKeys(o);
-    };
-    return function (mod) {
-        if (mod && mod.__esModule) return mod;
-        var result = {};
-        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
-        __setModuleDefault(result, mod);
-        return result;
-    };
-})();
-Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.fetchJiraTickets = fetchJiraTickets;
-const core = __importStar(__nccwpck_require__(7484));
-function extractJiraTicketIds(text) {
-    const regex = /\b([A-Z][A-Z0-9]+-\d+)\b/g;
-    const matches = text.match(regex);
-    const unique = [...new Set(matches ?? [])];
-    return unique;
-}
-async function fetchTicket(ticketId, jiraUrl, email, token) {
-    const credentials = Buffer.from(`${email}:${token}`).toString('base64');
-    const url = `${jiraUrl}/rest/api/3/issue/${ticketId}`;
-    const response = await fetch(url, {
-        headers: {
-            Authorization: `Basic ${credentials}`,
-            Accept: 'application/json',
-        },
+    if (drafts.length === 0) {
+        core.info('No drafts generated');
+        return;
+    }
+    // open PR with draft additions
+    await (0, patcher_1.applyDraftAndOpenPR)(octokit, owner, repo, prNumber, prBranch, drafts);
+    // post comment on original PR letting dev know
+    await octokit.rest.issues.createComment({
+        owner,
+        repo,
+        issue_number: prNumber,
+        body: '## 👀 WatchDocs\n\n✍️ Draft documentation additions have been generated. Check the new PR for review.',
     });
-    if (!response.ok) {
-        core.warning(`Failed to fetch Jira ticket ${ticketId}: ${response.status}`);
-        return null;
-    }
-    const data = await response.json();
-    const descriptionBlocks = data.fields.description?.content ?? [];
-    const descriptionText = descriptionBlocks
-        .flatMap((block) => block.content ?? [])
-        .map((inline) => inline.text ?? '')
-        .join(' ');
-    const ticket = {
-        id: data.key,
-        summary: data.fields.summary,
-        description: descriptionText,
-        status: data.fields.status.name,
-    };
-    return ticket;
+    core.info('WatchDocs draft mode complete');
 }
-async function fetchJiraTickets(prDescription, jiraUrl, email, token) {
-    const ticketIds = extractJiraTicketIds(prDescription);
-    if (ticketIds.length === 0) {
-        core.info('No Jira ticket IDs found in PR description');
-        return '';
-    }
-    core.info(`Found Jira tickets: ${ticketIds.join(', ')}`);
-    const tickets = [];
-    for (const id of ticketIds) {
-        const ticket = await fetchTicket(id, jiraUrl, email, token);
-        if (ticket === null)
+function extractGapsFromComment(body) {
+    const lines = body.split('\n');
+    const gaps = lines
+        .filter((line) => line.includes('⚠️'))
+        .map((line) => line.replace('- ⚠️', '').trim());
+    return gaps;
+}
+function loadDocFiles(paths) {
+    const docFiles = [];
+    for (const docPath of paths) {
+        const fullPath = path.join(process.cwd(), docPath);
+        if (!fs.existsSync(fullPath))
             continue;
-        if (ticket.status.toLowerCase() !== 'done') {
-            core.info(`Skipping ticket ${ticket.id} — status is "${ticket.status}", not Done`);
-            continue;
+        const files = getAllMarkdownFiles(fullPath);
+        for (const file of files) {
+            const content = fs.readFileSync(file, 'utf-8');
+            docFiles.push({
+                path: file.replace(process.cwd(), ''),
+                content,
+            });
         }
-        tickets.push(ticket);
     }
-    if (tickets.length === 0) {
-        core.info('No Done tickets found, skipping Jira context');
-        return '';
-    }
-    const formatted = tickets
-        .map((t) => `Ticket ${t.id} (${t.status})\nSummary: ${t.summary}\nDescription: ${t.description}`)
-        .join('\n\n');
-    return formatted;
+    return docFiles;
 }
+function getAllMarkdownFiles(dir) {
+    const results = [];
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+            results.push(...getAllMarkdownFiles(fullPath));
+        }
+        else if (entry.name.endsWith('.md') || entry.name.endsWith('.mdx')) {
+            results.push(fullPath);
+        }
+    }
+    return results;
+}
+runAnalysisMode();
 
 
 /***/ }),
 
-/***/ 5881:
+/***/ 1382:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
@@ -45336,80 +44971,62 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.fetchNotionPages = fetchNotionPages;
+exports.applyDraftAndOpenPR = applyDraftAndOpenPR;
 const core = __importStar(__nccwpck_require__(7484));
-function extractNotionPageIds(text) {
-    const regex = /notion\.so\/[^\s]*([a-f0-9]{32})/g;
-    const matches = [];
-    let match;
-    while ((match = regex.exec(text)) !== null) {
-        matches.push(match[1]);
-    }
-    const unique = [...new Set(matches)];
-    return unique;
-}
-async function fetchPageTitle(pageId, token) {
-    const response = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
-        headers: {
-            Authorization: `Bearer ${token}`,
-            'Notion-Version': '2022-06-28',
-        },
+const fs = __importStar(__nccwpck_require__(9896));
+const path = __importStar(__nccwpck_require__(6928));
+async function applyDraftAndOpenPR(octokit, owner, repo, prNumber, prBranch, drafts) {
+    const draftBranch = `watchdocs/draft-${prNumber}`;
+    // create new branch from the PR branch
+    const { data: ref } = await octokit.rest.git.getRef({
+        owner,
+        repo,
+        ref: `heads/${prBranch}`,
     });
-    if (!response.ok) {
-        core.warning(`Failed to fetch Notion page ${pageId}: ${response.status}`);
-        return 'Untitled';
-    }
-    const data = await response.json();
-    const titleBlocks = data.properties?.title?.title ?? [];
-    const title = titleBlocks[0]?.plain_text ?? 'Untitled';
-    return title;
-}
-async function fetchPageContent(pageId, token) {
-    const response = await fetch(`https://api.notion.com/v1/blocks/${pageId}/children`, {
-        headers: {
-            Authorization: `Bearer ${token}`,
-            'Notion-Version': '2022-06-28',
-        },
+    const sha = ref.object.sha;
+    await octokit.rest.git.createRef({
+        owner,
+        repo,
+        ref: `refs/heads/${draftBranch}`,
+        sha,
     });
-    if (!response.ok) {
-        return '';
+    core.info(`Created branch ${draftBranch} from ${prBranch}`);
+    // apply additions to each doc file
+    for (const draft of drafts) {
+        const filePath = path.join(process.cwd(), draft.filePath);
+        const existing = fs.existsSync(filePath)
+            ? fs.readFileSync(filePath, 'utf-8')
+            : '';
+        const updated = `${existing}\n\n${draft.additions}`;
+        // get current file SHA for update
+        const { data: fileData } = await octokit.rest.repos.getContent({
+            owner,
+            repo,
+            path: draft.filePath.replace(/^\//, ''),
+            ref: draftBranch,
+        });
+        const fileSha = Array.isArray(fileData) ? '' : fileData.sha;
+        await octokit.rest.repos.createOrUpdateFileContents({
+            owner,
+            repo,
+            path: draft.filePath.replace(/^\//, ''),
+            message: `docs: WatchDocs draft additions for PR #${prNumber}`,
+            content: Buffer.from(updated).toString('base64'),
+            sha: fileSha,
+            branch: draftBranch,
+        });
+        core.info(`Applied draft additions to ${draft.filePath}`);
     }
-    const data = await response.json();
-    const blocks = data.results ?? [];
-    const lines = blocks.map((block) => {
-        const richTextBlock = block.paragraph ??
-            block.heading_1 ??
-            block.heading_2 ??
-            block.heading_3 ??
-            block.bulleted_list_item ??
-            block.numbered_list_item;
-        const richTexts = richTextBlock?.rich_text ?? [];
-        const line = richTexts.map((rt) => rt.plain_text ?? '').join('');
-        return line;
+    // open PR targeting the original PR branch
+    const { data: pr } = await octokit.rest.pulls.create({
+        owner,
+        repo,
+        title: `docs: WatchDocs draft additions for PR #${prNumber}`,
+        body: `This PR was automatically generated by WatchDocs.\n\nIt contains draft documentation additions for the gaps identified in PR #${prNumber}.\n\nReview and merge into your docs branch when ready.`,
+        head: draftBranch,
+        base: prBranch,
     });
-    const content = lines.filter(Boolean).join('\n').slice(0, 3000);
-    return content;
-}
-async function fetchNotionPages(token, prDescription) {
-    const pageIds = extractNotionPageIds(prDescription);
-    if (pageIds.length === 0) {
-        core.info('No Notion page links found in PR description');
-        return '';
-    }
-    core.info(`Found Notion pages: ${pageIds.join(', ')}`);
-    const pages = [];
-    for (const id of pageIds) {
-        const title = await fetchPageTitle(id, token);
-        const content = await fetchPageContent(id, token);
-        const page = { id, title, content };
-        pages.push(page);
-    }
-    if (pages.length === 0)
-        return '';
-    const formatted = pages
-        .map((p) => `Notion Page: ${p.title}\n${p.content}`)
-        .join('\n\n');
-    return formatted;
+    core.info(`Opened draft PR: ${pr.html_url}`);
 }
 
 

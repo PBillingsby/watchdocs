@@ -32,7 +32,7 @@ async function runDraftMode(): Promise<void> {
   const context = github.context
 
   // get PR number from the issue comment event
-  const prNumber: number = context.payload.issue?.number
+  const prNumber: number | undefined = context.payload.issue?.number
   if (!prNumber) {
     core.info('No PR number found, skipping draft mode')
     return

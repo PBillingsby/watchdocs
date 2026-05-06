@@ -176,3 +176,51 @@ Respond ONLY with a JSON object in this exact format, no preamble:
 
   return result
 }
+
+export async function scoreDocRelevance(
+  anthropicKey: string,
+  changedFiles: string[],
+  docFiles: { path: string }[]
+): Promise<string[]> {
+  const client: Anthropic = new Anthropic({ apiKey: anthropicKey })
+
+  const prompt: string = `You are analyzing a pull request. Given these changed code files and available documentation files, identify which documentation files are likely affected by the code changes.
+
+Changed code files:
+${changedFiles.join('\n')}
+
+Available documentation files:
+${docFiles.map(f => f.path).join('\n')}
+
+Respond ONLY with a JSON array of the documentation file paths that are likely affected. No preamble, no explanation:
+["path/to/doc.md"]`
+
+  const response: Anthropic.Message = await client.messages.create({
+    model: 'claude-haiku-4-5',
+    max_tokens: 512,
+    messages: [
+      {
+        role: 'user',
+        content: prompt,
+      },
+    ],
+  })
+
+  const firstBlock: Anthropic.ContentBlock = response.content[0]
+
+  if (firstBlock.type !== 'text') {
+    core.warning('Doc relevance scoring returned no text, using all doc files')
+    return docFiles.map(f => f.path)
+  }
+
+  const raw: string = firstBlock.text.replace(/```json|```/g, '').trim()
+
+  try {
+    const relevant: string[] = JSON.parse(raw) as string[]
+    core.info(`Relevant doc files identified: ${relevant.join(', ')}`)
+    return relevant
+  } catch {
+    core.warning('Failed to parse doc relevance response, using all doc files')
+    return docFiles.map(f => f.path)
+  }
+}

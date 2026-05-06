@@ -44538,6 +44538,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.analyzeWithClaude = analyzeWithClaude;
+exports.scoreDocRelevance = scoreDocRelevance;
 const sdk_1 = __importDefault(__nccwpck_require__(121));
 const core = __importStar(__nccwpck_require__(7484));
 const MAX_RETRIES = 3;
@@ -44658,6 +44659,44 @@ Respond ONLY with a JSON object in this exact format, no preamble:
     const result = parseAnalysisResult(raw);
     core.info(`Analysis complete. Has issues: ${result.hasIssues}, Issue count: ${result.issues.length}`);
     return result;
+}
+async function scoreDocRelevance(anthropicKey, changedFiles, docFiles) {
+    const client = new sdk_1.default({ apiKey: anthropicKey });
+    const prompt = `You are analyzing a pull request. Given these changed code files and available documentation files, identify which documentation files are likely affected by the code changes.
+
+Changed code files:
+${changedFiles.join('\n')}
+
+Available documentation files:
+${docFiles.map(f => f.path).join('\n')}
+
+Respond ONLY with a JSON array of the documentation file paths that are likely affected. No preamble, no explanation:
+["path/to/doc.md"]`;
+    const response = await client.messages.create({
+        model: 'claude-haiku-4-5',
+        max_tokens: 512,
+        messages: [
+            {
+                role: 'user',
+                content: prompt,
+            },
+        ],
+    });
+    const firstBlock = response.content[0];
+    if (firstBlock.type !== 'text') {
+        core.warning('Doc relevance scoring returned no text, using all doc files');
+        return docFiles.map(f => f.path);
+    }
+    const raw = firstBlock.text.replace(/```json|```/g, '').trim();
+    try {
+        const relevant = JSON.parse(raw);
+        core.info(`Relevant doc files identified: ${relevant.join(', ')}`);
+        return relevant;
+    }
+    catch {
+        core.warning('Failed to parse doc relevance response, using all doc files');
+        return docFiles.map(f => f.path);
+    }
 }
 
 
@@ -44949,9 +44988,21 @@ async function run() {
         }
         // load doc files from configured paths
         core.info('Loading documentation files...');
-        const docFiles = loadDocFiles(config.docs.paths);
-        if (docFiles.length === 0) {
+        const allDocFiles = loadDocFiles(config.docs.paths);
+        if (allDocFiles.length === 0) {
             core.warning('No documentation files found in configured paths, skipping');
+            return;
+        }
+        core.info(`Found ${allDocFiles.length} documentation files`);
+        // score doc files for relevance against changed files
+        const relevantDocPaths = await (0, analyzer_1.scoreDocRelevance)(anthropicKey, prDiff.diff.split('\n')
+            .filter((line) => line.startsWith('File:'))
+            .map((line) => line.replace('File: ', '').trim()), allDocFiles);
+        // only load full content for relevant doc files
+        const docFiles = allDocFiles.filter((f) => relevantDocPaths.some((p) => f.path.includes(p) || p.includes(f.path)));
+        core.info(`Relevant doc files after scoring: ${docFiles.length}`);
+        if (docFiles.length === 0) {
+            core.warning('No relevant doc files found for this PR, skipping');
             return;
         }
         core.info(`Found ${docFiles.length} documentation files`);
@@ -44998,7 +45049,7 @@ function loadDocFiles(paths) {
             const content = fs.readFileSync(file, 'utf-8');
             docFiles.push({
                 path: file.replace(process.cwd(), ''),
-                content: content.slice(0, 2000), // cap per file to manage context
+                content,
             });
         }
     }

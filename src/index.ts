@@ -3,7 +3,7 @@ import * as github from '@actions/github'
 import { fetchPRDiff } from './sources/github'
 import { fetchJiraTickets } from './sources/jira'
 import { fetchNotionPages } from './sources/notion'
-import { analyzeWithClaude } from './analyzer'
+import { analyzeWithClaude, scoreDocRelevance } from './analyzer'
 import { postPRComment, findExistingComment, resolveExistingComment } from './comment'
 import { loadConfig } from './config'
 import * as fs from 'fs'
@@ -74,10 +74,35 @@ async function run() {
 
     // load doc files from configured paths
     core.info('Loading documentation files...')
-    const docFiles = loadDocFiles(config.docs.paths)
+    const allDocFiles: { path: string; content: string }[] = loadDocFiles(config.docs.paths)
+
+    if (allDocFiles.length === 0) {
+      core.warning('No documentation files found in configured paths, skipping')
+      return
+    }
+
+    core.info(`Found ${allDocFiles.length} documentation files`)
+
+    // score doc files for relevance against changed files
+    const relevantDocPaths: string[] = await scoreDocRelevance(
+      anthropicKey,
+      prDiff.diff.split('\n')
+        .filter((line: string) => line.startsWith('File:'))
+        .map((line: string) => line.replace('File: ', '').trim()),
+      allDocFiles
+    )
+
+    // only load full content for relevant doc files
+    const docFiles: { path: string; content: string }[] = allDocFiles.filter(
+      (f: { path: string; content: string }) => relevantDocPaths.some(
+        (p: string) => f.path.includes(p) || p.includes(f.path)
+      )
+    )
+
+    core.info(`Relevant doc files after scoring: ${docFiles.length}`)
 
     if (docFiles.length === 0) {
-      core.warning('No documentation files found in configured paths, skipping')
+      core.warning('No relevant doc files found for this PR, skipping')
       return
     }
 
@@ -131,15 +156,15 @@ function loadDocFiles(paths: string[]): { path: string; content: string }[] {
   const docFiles: { path: string; content: string }[] = []
 
   for (const docPath of paths) {
-    const fullPath = path.join(process.cwd(), docPath)
+    const fullPath: string = path.join(process.cwd(), docPath)
     if (!fs.existsSync(fullPath)) continue
 
-    const files = getAllMarkdownFiles(fullPath)
+    const files: string[] = getAllMarkdownFiles(fullPath)
     for (const file of files) {
-      const content = fs.readFileSync(file, 'utf-8')
+      const content: string = fs.readFileSync(file, 'utf-8')
       docFiles.push({
         path: file.replace(process.cwd(), ''),
-        content: content.slice(0, 2000), // cap per file to manage context
+        content,
       })
     }
   }

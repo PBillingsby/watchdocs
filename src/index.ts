@@ -196,17 +196,14 @@ async function runDraftMode(): Promise<void> {
   const drafts: { filePath: string; additions: string }[] = []
 
   for (const docFile of allDocFiles) {
-    const fileGaps: string[] = gaps.filter(
-      (g: string) => g.includes(docFile.path)
-    )
-    if (fileGaps.length === 0) continue
-
+    if (gaps.length === 0) continue
+  
     const draft = await generateDraft({
       anthropicKey,
-      gaps: fileGaps,
+      gaps,
       docFile,
     })
-
+  
     drafts.push(draft)
   }
 

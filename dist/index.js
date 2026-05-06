@@ -45164,12 +45164,11 @@ async function runDraftMode() {
     const allDocFiles = loadDocFiles(config.docs.paths);
     const drafts = [];
     for (const docFile of allDocFiles) {
-        const fileGaps = gaps.filter((g) => g.includes(docFile.path));
-        if (fileGaps.length === 0)
+        if (gaps.length === 0)
             continue;
         const draft = await (0, drafter_1.generateDraft)({
             anthropicKey,
-            gaps: fileGaps,
+            gaps,
             docFile,
         });
         drafts.push(draft);

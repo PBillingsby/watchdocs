@@ -68,7 +68,7 @@ async function callClaudeWithRetry(
 
   } catch (error) {
     if (error instanceof Anthropic.APIError) {
-      core.warning(`Claude API error on attempt ${attempt}/${MAX_RETRIES}: status=${error.status} type=${error.error?.type ?? 'unknown'} message=${error.message}`)
+      core.warning(`Claude API error on attempt ${attempt}/${MAX_RETRIES}: status=${error.status} message=${error.message}`)
 
       const isRetryable: boolean =
         error.status !== undefined &&

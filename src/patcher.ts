@@ -28,6 +28,7 @@ export async function applyDraftAndOpenPR(
       : Buffer.from((fileData as { content: string }).content, 'base64').toString('utf-8')
 
     const updated: string = `${existingContent}\n\n${draft.additions}`
+    core.info(`Appending ${draft.additions.length} chars to ${filePath}`)
 
     await octokit.rest.repos.createOrUpdateFileContents({
       owner,

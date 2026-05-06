@@ -44934,19 +44934,17 @@ const sdk_1 = __importDefault(__nccwpck_require__(121));
 const core = __importStar(__nccwpck_require__(7484));
 async function generateDraft(input) {
     const client = new sdk_1.default({ apiKey: input.anthropicKey });
-    const prompt = `You are a technical writer. You will be given an existing documentation file and a list of missing sections that need to be added.
+    const prompt = `You are a technical writer. You will be given an existing documentation file and a list of missing sections.
 
-Write ONLY the new missing sections. Do not repeat or reproduce any existing content. Do not add preamble or explanation. Start directly with the new section heading.
+  Write ONLY the new missing sections. Output nothing else -- no existing content, no preamble, no explanation, no repeated sections. Just the new markdown sections ready to be appended.
 
-Match the exact tone, style, and format of the existing documentation.
+  ## Existing Documentation (DO NOT REPRODUCE)
+  ${input.docFile.content}
 
-## Existing Documentation (DO NOT REPEAT THIS)
-${input.docFile.content}
+  ## Missing Sections to Write
+  ${input.gaps.join('\n')}
 
-## Missing Sections to Write
-${input.gaps.join('\n')}
-
-Write only the new sections now:`;
+  Output only the new sections, starting with the first new section heading:`;
     const response = await client.messages.create({
         model: 'claude-sonnet-4-5',
         max_tokens: 4096,
@@ -45286,6 +45284,7 @@ async function applyDraftAndOpenPR(octokit, owner, repo, prNumber, prBranch, dra
             ? ''
             : Buffer.from(fileData.content, 'base64').toString('utf-8');
         const updated = `${existingContent}\n\n${draft.additions}`;
+        core.info(`Appending ${draft.additions.length} chars to ${filePath}`);
         await octokit.rest.repos.createOrUpdateFileContents({
             owner,
             repo,

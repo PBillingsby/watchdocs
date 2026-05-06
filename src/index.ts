@@ -4,7 +4,7 @@ import { fetchPRDiff } from './sources/github'
 import { fetchJiraTickets } from './sources/jira'
 import { fetchNotionPages } from './sources/notion'
 import { analyzeWithClaude } from './analyzer'
-import { postPRComment } from './comment'
+import { postPRComment, findExistingComment, resolveExistingComment } from './comment'
 import { loadConfig } from './config'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -97,6 +97,20 @@ async function run() {
 
     if (!analysis.hasIssues) {
       core.info('WatchDocs: No documentation gaps found')
+    
+      // clean up existing comment if docs are now up to date
+      const existingCommentId: number | null = await findExistingComment(
+        octokit,
+        owner,
+        repo,
+        prNumber
+      )
+    
+      if (existingCommentId !== null) {
+        core.info('Docs are up to date, resolving existing WatchDocs comment')
+        await resolveExistingComment(octokit, owner, repo, existingCommentId)
+      }
+    
       return
     }
 

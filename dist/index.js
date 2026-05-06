@@ -44702,7 +44702,9 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.findExistingComment = findExistingComment;
 exports.postPRComment = postPRComment;
+exports.resolveExistingComment = resolveExistingComment;
 const core = __importStar(__nccwpck_require__(7484));
 function buildCommentBody(analysis, owner, repo, sha) {
     const lines = [];
@@ -44760,6 +44762,14 @@ async function postPRComment(octokit, owner, repo, prNumber, sha, analysis) {
             body,
         });
     }
+}
+async function resolveExistingComment(octokit, owner, repo, commentId) {
+    await octokit.rest.issues.updateComment({
+        owner,
+        repo,
+        comment_id: commentId,
+        body: '## 👀 WatchDocs\n\n✅ Documentation looks up to date. No gaps found.\n\n---\n*Powered by [WatchDocs](https://github.com/PBillingsby/watchdocs)*',
+    });
 }
 
 
@@ -44957,6 +44967,12 @@ async function run() {
         });
         if (!analysis.hasIssues) {
             core.info('WatchDocs: No documentation gaps found');
+            // clean up existing comment if docs are now up to date
+            const existingCommentId = await (0, comment_1.findExistingComment)(octokit, owner, repo, prNumber);
+            if (existingCommentId !== null) {
+                core.info('Docs are up to date, resolving existing WatchDocs comment');
+                await (0, comment_1.resolveExistingComment)(octokit, owner, repo, existingCommentId);
+            }
             return;
         }
         // post PR comment

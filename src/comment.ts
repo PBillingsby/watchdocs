@@ -42,7 +42,7 @@ function buildCommentBody(
   return lines.join('\n')
 }
 
-async function findExistingComment(
+export async function findExistingComment(
   octokit: Octokit,
   owner: string,
   repo: string,
@@ -95,4 +95,18 @@ export async function postPRComment(
       body,
     })
   }
+}
+
+export async function resolveExistingComment(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  commentId: number
+): Promise<void> {
+  await octokit.rest.issues.updateComment({
+    owner,
+    repo,
+    comment_id: commentId,
+    body: '## 👀 WatchDocs\n\n✅ Documentation looks up to date. No gaps found.\n\n---\n*Powered by [WatchDocs](https://github.com/PBillingsby/watchdocs)*',
+  })
 }

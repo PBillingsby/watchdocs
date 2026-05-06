@@ -44541,8 +44541,8 @@ exports.analyzeWithClaude = analyzeWithClaude;
 exports.scoreDocRelevance = scoreDocRelevance;
 const sdk_1 = __importDefault(__nccwpck_require__(121));
 const core = __importStar(__nccwpck_require__(7484));
-const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 2000;
+const MAX_RETRIES = 5;
+const RETRY_DELAY_MS = 5000;
 const MAX_DIFF_TOKENS = 4000;
 function truncateToTokenBudget(text, maxChars) {
     if (text.length <= maxChars)

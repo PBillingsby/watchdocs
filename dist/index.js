@@ -44739,6 +44739,7 @@ async function findExistingComment(octokit, owner, repo, prNumber) {
         issue_number: prNumber,
     });
     const existing = comments.find((comment) => comment.body?.includes('## 👀 WatchDocs'));
+    core.info(`Found existing comment ID: ${existing?.id ?? 'none'}`);
     return existing?.id ?? null;
 }
 async function postPRComment(octokit, owner, repo, prNumber, sha, analysis) {

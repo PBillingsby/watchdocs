@@ -59,6 +59,7 @@ export async function findExistingComment(
       comment.body?.includes('## 👀 WatchDocs')
   )
 
+  core.info(`Found existing comment ID: ${existing?.id ?? 'none'}`)
   return existing?.id ?? null
 }
 

@@ -1,4 +1,5 @@
 import * as github from '@actions/github'
+import * as core from '@actions/core'
 import { AnalysisResult, AnalysisIssue } from './analyzer'
 
 type Octokit = ReturnType<typeof github.getOctokit>
@@ -41,6 +42,26 @@ function buildCommentBody(
   return lines.join('\n')
 }
 
+async function findExistingComment(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  prNumber: number
+): Promise<number | null> {
+  const { data: comments } = await octokit.rest.issues.listComments({
+    owner,
+    repo,
+    issue_number: prNumber,
+  })
+
+  const existing = comments.find(
+    (comment: { body?: string; id: number }) =>
+      comment.body?.includes('## 👀 WatchDocs')
+  )
+
+  return existing?.id ?? null
+}
+
 export async function postPRComment(
   octokit: Octokit,
   owner: string,
@@ -50,11 +71,28 @@ export async function postPRComment(
   analysis: AnalysisResult
 ): Promise<void> {
   const body: string = buildCommentBody(analysis, owner, repo, sha)
-
-  await octokit.rest.issues.createComment({
+  const existingCommentId: number | null = await findExistingComment(
+    octokit,
     owner,
     repo,
-    issue_number: prNumber,
-    body,
-  })
+    prNumber
+  )
+
+  if (existingCommentId !== null) {
+    core.info('Updating existing WatchDocs comment')
+    await octokit.rest.issues.updateComment({
+      owner,
+      repo,
+      comment_id: existingCommentId,
+      body,
+    })
+  } else {
+    core.info('Creating new WatchDocs comment')
+    await octokit.rest.issues.createComment({
+      owner,
+      repo,
+      issue_number: prNumber,
+      body,
+    })
+  }
 }

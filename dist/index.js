@@ -44954,6 +44954,7 @@ async function run() {
             return;
         }
         core.info(`Found ${docFiles.length} documentation files`);
+        core.info(`Doc files being sent to Claude:\n${docFiles.map(f => `${f.path}: ${f.content.slice(0, 200)}`).join('\n')}`);
         // run claude analysis
         core.info('Analyzing with Claude...');
         const analysis = await (0, analyzer_1.analyzeWithClaude)({

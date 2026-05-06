@@ -1,5 +1,9 @@
 name: WatchDocs
-description: Automatically detects missing or outdated documentation based on PR changes, changelogs, and linked tickets.
+description: Automatically detects missing or outdated documentation based on PR changes, changelogs, Jira tickets, and Notion pages.
+author: PBillingsby
+branding:
+  icon: eye
+  color: green
 
 inputs:
   anthropic_api_key:
@@ -8,6 +12,10 @@ inputs:
   github_token:
     description: GitHub token for posting PR comments
     required: true
+  mode:
+    description: Run mode. 'analyze' (default) or 'draft'
+    required: false
+    default: analyze
   jira_url:
     description: Jira instance URL (optional)
     required: false

@@ -44543,7 +44543,6 @@ const sdk_1 = __importDefault(__nccwpck_require__(121));
 const core = __importStar(__nccwpck_require__(7484));
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
-const MAX_DOC_TOKENS = 4000;
 const MAX_DIFF_TOKENS = 4000;
 function truncateToTokenBudget(text, maxChars) {
     if (text.length <= maxChars)
@@ -44614,7 +44613,7 @@ async function analyzeWithClaude(input) {
     const client = new sdk_1.default({ apiKey: input.anthropicKey });
     const docContext = truncateToTokenBudget(input.docFiles
         .map((f) => `### ${f.path}\n${f.content}`)
-        .join('\n\n'), MAX_DOC_TOKENS);
+        .join('\n\n'), MAX_DIFF_TOKENS);
     const diffContext = truncateToTokenBudget(input.prDiff, MAX_DIFF_TOKENS);
     const sourceContext = [
         diffContext ? `## PR Diff\n${diffContext}` : '',

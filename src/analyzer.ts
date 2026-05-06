@@ -29,7 +29,6 @@ export interface AnalysisResult {
 
 const MAX_RETRIES: number = 3
 const RETRY_DELAY_MS: number = 2000
-const MAX_DOC_TOKENS: number = 4000
 const MAX_DIFF_TOKENS: number = 4000
 
 function truncateToTokenBudget(text: string, maxChars: number): string {
@@ -119,7 +118,7 @@ export async function analyzeWithClaude(input: AnalysisInput): Promise<AnalysisR
     input.docFiles
       .map((f: DocFile) => `### ${f.path}\n${f.content}`)
       .join('\n\n'),
-    MAX_DOC_TOKENS
+      MAX_DIFF_TOKENS
   )
 
   const diffContext: string = truncateToTokenBudget(

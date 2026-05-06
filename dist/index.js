@@ -44500,19 +44500,123 @@ function wrappy (fn, cb) {
 
 "use strict";
 
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.analyzeWithClaude = analyzeWithClaude;
 const sdk_1 = __importDefault(__nccwpck_require__(121));
+const core = __importStar(__nccwpck_require__(7484));
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 2000;
+const MAX_DOC_TOKENS = 4000;
+const MAX_DIFF_TOKENS = 4000;
+function truncateToTokenBudget(text, maxChars) {
+    if (text.length <= maxChars)
+        return text;
+    core.warning(`Content truncated from ${text.length} to ${maxChars} chars to stay within context budget`);
+    return text.slice(0, maxChars) + '\n... [truncated]';
+}
+async function sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+async function callClaudeWithRetry(client, prompt, attempt = 1) {
+    try {
+        const response = await client.messages.create({
+            model: 'claude-sonnet-4-5',
+            max_tokens: 1024,
+            messages: [
+                {
+                    role: 'user',
+                    content: prompt,
+                },
+            ],
+        });
+        const firstBlock = response.content[0];
+        if (firstBlock.type !== 'text') {
+            throw new Error('Claude returned no text content');
+        }
+        return firstBlock.text;
+    }
+    catch (error) {
+        const isRetryable = error instanceof sdk_1.default.APIError &&
+            error.status !== undefined &&
+            (error.status === 429 || error.status >= 500);
+        if (isRetryable && attempt < MAX_RETRIES) {
+            const delay = RETRY_DELAY_MS * attempt;
+            core.warning(`Claude API error on attempt ${attempt}, retrying in ${delay}ms: ${error}`);
+            await sleep(delay);
+            return callClaudeWithRetry(client, prompt, attempt + 1);
+        }
+        throw error;
+    }
+}
+function parseAnalysisResult(raw) {
+    const cleaned = raw.replace(/```json|```/g, '').trim();
+    try {
+        const parsed = JSON.parse(cleaned);
+        if (typeof parsed.hasIssues !== 'boolean') {
+            throw new Error('Missing hasIssues field');
+        }
+        if (!Array.isArray(parsed.issues)) {
+            throw new Error('Missing issues array');
+        }
+        if (typeof parsed.summary !== 'string') {
+            throw new Error('Missing summary field');
+        }
+        return parsed;
+    }
+    catch (error) {
+        core.warning(`Failed to parse Claude response as JSON: ${error}`);
+        core.warning(`Raw response: ${cleaned.slice(0, 500)}`);
+        return {
+            hasIssues: false,
+            issues: [],
+            summary: 'WatchDocs was unable to parse the analysis result. Please check the action logs.',
+        };
+    }
+}
 async function analyzeWithClaude(input) {
     const client = new sdk_1.default({ apiKey: input.anthropicKey });
-    const docContext = input.docFiles
+    const docContext = truncateToTokenBudget(input.docFiles
         .map((f) => `### ${f.path}\n${f.content}`)
-        .join('\n\n');
+        .join('\n\n'), MAX_DOC_TOKENS);
+    const diffContext = truncateToTokenBudget(input.prDiff, MAX_DIFF_TOKENS);
     const sourceContext = [
-        input.prDiff ? `## PR Diff\n${input.prDiff}` : '',
+        diffContext ? `## PR Diff\n${diffContext}` : '',
         input.prDescription ? `## PR Description\n${input.prDescription}` : '',
         input.changelog ? `## Changelog\n${input.changelog}` : '',
         input.jiraContext ? `## Jira Tickets\n${input.jiraContext}` : '',
@@ -44533,6 +44637,8 @@ Analyze the changes and identify any documentation gaps. A gap exists when:
 - A new error code or response is added but not listed in the docs
 - A changelog entry references something that does not appear in the docs
 
+Only flag user-facing or developer-facing changes. Ignore internal refactors, config changes, test updates, and infrastructure changes that do not affect the public API or developer experience.
+
 Be specific. Reference the exact file, the missing item, and why it needs updating.
 If there are no documentation gaps, say so clearly.
 
@@ -44547,23 +44653,11 @@ Respond ONLY with a JSON object in this exact format, no preamble:
     }
   ]
 }`;
-    const response = await client.messages.create({
-        model: 'claude-sonnet-4-5',
-        max_tokens: 1024,
-        messages: [
-            {
-                role: 'user',
-                content: prompt,
-            },
-        ],
-    });
-    const firstBlock = response.content[0];
-    if (firstBlock.type !== 'text') {
-        return { hasIssues: false, issues: [], summary: 'No response from Claude' };
-    }
-    const raw = firstBlock.text.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(raw);
-    return parsed;
+    core.info('Sending analysis request to Claude...');
+    const raw = await callClaudeWithRetry(client, prompt);
+    const result = parseAnalysisResult(raw);
+    core.info(`Analysis complete. Has issues: ${result.hasIssues}, Issue count: ${result.issues.length}`);
+    return result;
 }
 
 

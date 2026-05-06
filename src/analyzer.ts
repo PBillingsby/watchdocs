@@ -70,7 +70,8 @@ async function callClaudeWithRetry(
   } catch (error) {
     const isRetryable: boolean =
       error instanceof Anthropic.APIError &&
-      (error.status === 429 || error.status >= 500)
+      error.status !== undefined &&
+        (error.status === 429 || error.status >= 500)
 
     if (isRetryable && attempt < MAX_RETRIES) {
       const delay: number = RETRY_DELAY_MS * attempt

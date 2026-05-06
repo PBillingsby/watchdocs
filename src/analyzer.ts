@@ -114,11 +114,9 @@ function parseAnalysisResult(raw: string): AnalysisResult {
 export async function analyzeWithClaude(input: AnalysisInput): Promise<AnalysisResult> {
   const client: Anthropic = new Anthropic({ apiKey: input.anthropicKey })
 
-  const docContext: string = truncateToTokenBudget(
-    input.docFiles
+  const docContext: string = input.docFiles
       .map((f: DocFile) => `### ${f.path}\n${f.content}`)
       .join('\n\n')
-  )
 
   const diffContext: string = truncateToTokenBudget(
     input.prDiff,

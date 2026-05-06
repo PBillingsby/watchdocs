@@ -44611,9 +44611,9 @@ function parseAnalysisResult(raw) {
 }
 async function analyzeWithClaude(input) {
     const client = new sdk_1.default({ apiKey: input.anthropicKey });
-    const docContext = truncateToTokenBudget(input.docFiles
+    const docContext = input.docFiles
         .map((f) => `### ${f.path}\n${f.content}`)
-        .join('\n\n'), MAX_DIFF_TOKENS);
+        .join('\n\n');
     const diffContext = truncateToTokenBudget(input.prDiff, MAX_DIFF_TOKENS);
     const sourceContext = [
         diffContext ? `## PR Diff\n${diffContext}` : '',
@@ -45005,7 +45005,7 @@ async function run() {
             return;
         }
         core.info(`Found ${docFiles.length} documentation files`);
-        core.info(`Doc files being sent to Claude:\n${docFiles.map(f => `${f.path}: ${f.content.slice(0, 200)}`).join('\n')}`);
+        core.info(`Doc files being sent to Claude: ${docFiles.map(f => `${f.path} (${f.content.length} chars)`).join(', ')}`);
         // run claude analysis
         core.info('Analyzing with Claude...');
         const analysis = await (0, analyzer_1.analyzeWithClaude)({

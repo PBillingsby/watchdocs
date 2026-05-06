@@ -17,15 +17,17 @@ export async function generateDraft(input: DraftInput): Promise<DraftResult> {
 
   const prompt: string = `You are a technical writer. You will be given an existing documentation file and a list of missing sections that need to be added.
 
-Your job is to write ONLY the missing sections in the exact same tone, style, and format as the existing documentation. Do not rewrite existing content. Do not add preamble or explanation. Just write the new sections ready to be appended to the doc file.
+Write ONLY the new missing sections. Do not repeat or reproduce any existing content. Do not add preamble or explanation. Start directly with the new section heading.
 
-## Existing Documentation
+Match the exact tone, style, and format of the existing documentation.
+
+## Existing Documentation (DO NOT REPEAT THIS)
 ${input.docFile.content}
 
 ## Missing Sections to Write
 ${input.gaps.join('\n')}
 
-Write the new documentation sections now. Match the existing format exactly.`
+Write only the new sections now:`
 
   const response: Anthropic.Message = await client.messages.create({
     model: 'claude-sonnet-4-5',

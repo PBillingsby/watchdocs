@@ -49,7 +49,7 @@ async function callClaudeWithRetry(
   try {
     const response: Anthropic.Message = await client.messages.create({
       model: 'claude-sonnet-4-5',
-      max_tokens: 1024,
+      max_tokens: 4096,
       messages: [
         {
           role: 'user',
@@ -67,18 +67,25 @@ async function callClaudeWithRetry(
     return firstBlock.text
 
   } catch (error) {
-    const isRetryable: boolean =
-      error instanceof Anthropic.APIError &&
-      error.status !== undefined &&
-        (error.status === 429 || error.status >= 500)
+    if (error instanceof Anthropic.APIError) {
+      core.warning(`Claude API error on attempt ${attempt}/${MAX_RETRIES}: status=${error.status} type=${error.error?.type ?? 'unknown'} message=${error.message}`)
 
-    if (isRetryable && attempt < MAX_RETRIES) {
-      const delay: number = RETRY_DELAY_MS * attempt
-      core.warning(`Claude API error on attempt ${attempt}, retrying in ${delay}ms: ${error}`)
-      await sleep(delay)
-      return callClaudeWithRetry(client, prompt, attempt + 1)
+      const isRetryable: boolean =
+        error.status !== undefined &&
+        (error.status === 429 || error.status === 529 || error.status >= 500)
+
+      if (isRetryable && attempt < MAX_RETRIES) {
+        const delay: number = RETRY_DELAY_MS * attempt
+        core.warning(`Retrying in ${delay}ms...`)
+        await sleep(delay)
+        return callClaudeWithRetry(client, prompt, attempt + 1)
+      }
+
+      core.error(`Claude API call failed after ${attempt} attempts: status=${error.status} message=${error.message}`)
+      throw error
     }
 
+    core.error(`Unexpected error calling Claude: ${error}`)
     throw error
   }
 }
